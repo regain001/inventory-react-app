@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { purchaseOrderApi } from '../../api/purchaseOrderApi'
 import type { PurchaseOrder, PurchaseOrderQuery } from '../../types/purchaseOrder'
@@ -18,8 +18,9 @@ interface Filters {
 
 const EMPTY_FILTERS: Filters = { overallStatus: '', fromDate: '', toDate: '' }
 
-function toQuery(filters: Filters, start: number, limit: number): PurchaseOrderQuery {
+function toQuery(filters: Filters, keyword: string, start: number, limit: number): PurchaseOrderQuery {
   const query: PurchaseOrderQuery = { start, limit }
+  if (keyword) query.keyword = keyword
   if (filters.overallStatus) query.overallStatus = filters.overallStatus
   if (filters.fromDate) query.fromDate = filters.fromDate
   if (filters.toDate) query.toDate = filters.toDate
@@ -38,8 +39,9 @@ function PurchaseOrderListPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
+  const [keyword, setKeyword] = useState('')
+  const [debouncedKeyword, setDebouncedKeyword] = useState('')
   const [start, setStart] = useState(0)
   const [limit, setLimit] = useState(PAGE_SIZES[0])
   const [showForm, setShowForm] = useState(false)
@@ -49,7 +51,7 @@ function PurchaseOrderListPage() {
     setLoading(true)
     setError(null)
     try {
-      const page = await purchaseOrderApi.getAll(toQuery(filters, start, limit))
+      const page = await purchaseOrderApi.getAll(toQuery(filters, debouncedKeyword, start, limit))
       setOrders(page.records)
       setTotal(page.totalRecords)
     } catch (err) {
@@ -57,21 +59,19 @@ function PurchaseOrderListPage() {
     } finally {
       setLoading(false)
     }
-  }, [filters, start, limit])
+  }, [filters, debouncedKeyword, start, limit])
 
   useEffect(() => {
     void loadOrders()
   }, [loadOrders])
 
-  const handleApply = (event: FormEvent) => {
-    event.preventDefault()
-    setStart(0)
-    setFilters(draft)
-  }
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKeyword(keyword.trim()), 400)
+    return () => clearTimeout(timer)
+  }, [keyword])
 
-  const handleReset = () => {
-    setDraft(EMPTY_FILTERS)
-    setFilters(EMPTY_FILTERS)
+  const updateFilters = (patch: Partial<Filters>) => {
+    setFilters((current) => ({ ...current, ...patch }))
     setStart(0)
   }
 
@@ -124,25 +124,49 @@ function PurchaseOrderListPage() {
         </div>
       )}
 
-      <form className="card border-0 shadow-sm mb-3" onSubmit={handleApply}>
+      <form
+        className="card border-0 shadow-sm mb-3"
+        onSubmit={(event) => event.preventDefault()}
+      >
         <div className="card-body py-3">
           <div className="row g-2 align-items-end">
-            <div className="col-md-3">
+            <div className="col-lg-3 col-md-4">
+              <label htmlFor="poKeyword" className="form-label small mb-1">
+                Search
+              </label>
+              <div className="input-group">
+                <span className="input-group-text">
+                  <i className="bi bi-search" aria-hidden="true"></i>
+                </span>
+                <input
+                  id="poKeyword"
+                  type="text"
+                  className="form-control"
+                  placeholder="PO number or document no..."
+                  value={keyword}
+                  onChange={(event) => {
+                    setKeyword(event.target.value)
+                    setStart(0)
+                  }}
+                />
+              </div>
+            </div>
+            <div className="col-lg-2 col-md-3 col-sm-6">
               <label htmlFor="poStatus" className="form-label small mb-1">
                 Status
               </label>
               <select
                 id="poStatus"
                 className="form-select"
-                value={draft.overallStatus}
-                onChange={(event) => setDraft({ ...draft, overallStatus: event.target.value })}
+                value={filters.overallStatus}
+                onChange={(event) => updateFilters({ overallStatus: event.target.value })}
               >
                 <option value="">All</option>
                 <option value="Pending">Pending</option>
                 <option value="Completed">Completed</option>
               </select>
             </div>
-            <div className="col-md-3">
+            <div className="col-lg-2 col-md-4">
               <label htmlFor="poFromDate" className="form-label small mb-1">
                 From date
               </label>
@@ -150,11 +174,11 @@ function PurchaseOrderListPage() {
                 id="poFromDate"
                 type="date"
                 className="form-control"
-                value={draft.fromDate}
-                onChange={(event) => setDraft({ ...draft, fromDate: event.target.value })}
+                value={filters.fromDate}
+                onChange={(event) => updateFilters({ fromDate: event.target.value })}
               />
             </div>
-            <div className="col-md-3">
+            <div className="col-lg-2 col-md-4">
               <label htmlFor="poToDate" className="form-label small mb-1">
                 To date
               </label>
@@ -162,17 +186,9 @@ function PurchaseOrderListPage() {
                 id="poToDate"
                 type="date"
                 className="form-control"
-                value={draft.toDate}
-                onChange={(event) => setDraft({ ...draft, toDate: event.target.value })}
+                value={filters.toDate}
+                onChange={(event) => updateFilters({ toDate: event.target.value })}
               />
-            </div>
-            <div className="col-md-3 d-flex gap-2">
-              <button type="submit" className="btn btn-primary flex-fill">
-                Apply
-              </button>
-              <button type="button" className="btn btn-outline-secondary" onClick={handleReset}>
-                Reset
-              </button>
             </div>
           </div>
         </div>
